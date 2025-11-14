@@ -1,0 +1,5 @@
+duckdb>=0.9.0
+pandas>=2.0.0
+tqdm>=4.65.0
+kagglehub>=0.2.0
+vaderSentiment>=3.3.2
