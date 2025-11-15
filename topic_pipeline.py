@@ -199,7 +199,7 @@ topic_model = BERTopic(
     embedding_model=embedding_model,
     vectorizer_model=vectorizer_model,  # Use custom vectorizer with stop words
     min_topic_size=200,
-    nr_topics=100,
+    nr_topics=80,
     calculate_probabilities=False,
     verbose=True
 )
@@ -245,7 +245,7 @@ for topic_id in topic_info['Topic'].values:
         best_match_score = similarities[best_match_idx].item()
         
         # Lower threshold since we're using richer descriptions
-        if best_match_score > 0.19:
+        if best_match_score > 0.2:
             topic_alignments[topic_id] = {
                 'aligned_topic': TOPIC_NAMES[best_match_idx],
                 'confidence': best_match_score
