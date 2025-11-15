@@ -44,6 +44,10 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 git clone https://github.com/alex-kolmakov/text-sentiment-and-topic-classification.git
 cd text-sentiment-and-topic-classification
 
+# Create a virtual environment
+uv venv
+source ./venv/bin/activate
+
 # Install dependencies
 uv pip install -r requirements.txt
 ```
@@ -223,6 +227,8 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 # Setup
 git clone https://github.com/alex-kolmakov/text-sentiment-and-topic-classification.git
 cd text-sentiment-and-topic-classification
+uv venv
+source ./venv/bin/activate
 uv pip install -r requirements.txt
 
 # Run pipeline
