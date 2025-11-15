@@ -1,18 +1,20 @@
-# Ubuntu Dialogue Corpus - Sentiment Analysis Pipeline
+# Ubuntu Dialogue Corpus - Sentiment Analysis & Topic Classification Pipeline
 
-A fast and memory-efficient sentiment analysis pipeline for the Ubuntu Dialogue Corpus dataset using VADER sentiment analysis and DuckDB streaming.
+Pipeline for sentiment analysis and topic extraction from the Ubuntu Dialogue Corpus dataset using VADER sentiment analysis, BERTopic, and DuckDB streaming.
 
 ## Features
 
-- 🚀 **Fast Processing**: Uses VADER sentiment analysis (processes thousands of conversations per second)
-- 💾 **Memory Efficient**: DuckDB streaming handles 1M+ rows without loading entire dataset into memory
-- 📊 **Complete Analysis**: Analyzes 346K+ conversations with sentiment scores and classifications
-- 🎯 **Simple**: Sequential processing - no complex multiprocessing or model downloads required
+- 📊 **Complete Analysis**: 346K+ conversations with sentiment scores and topic classification
 - 🔬 **Evaluation-Focused**: Designed for speed and easy evaluation rather than production deployment
+- 🏷️ **Topic Extraction**: BERTopic with semantic alignment to predefined categories
+- 🔍 **Inspection Tools**: Evaluate topic mappings before final alignment
+
 
 ## Design Philosophy
 
-This pipeline is intentionally designed with **speed and easy evaluation** in mind. It prioritizes:
+This pipeline is intentionally designed with **speed and easy evaluation** in mind. 
+
+It prioritizes:
 
 - ✅ Quick setup and execution
 - ✅ Minimal dependencies
@@ -26,195 +28,230 @@ For production deployment, consider adding:
 - **Orchestration**: DAG-based workflow managers like Airflow, Prefect, or Dagster for scheduling, monitoring, and retry logic
 - **Configuration Management**: Environment variables, config files, and secrets management
 - **Monitoring**: Logging, metrics, and alerting systems
-- **Error Handling**: Robust retry mechanisms and failure notifications
-- **Data Validation**: Schema validation and data quality checks
-- **Scalability**: Distributed processing (Spark, Dask) for larger datasets
-- **CI/CD**: Automated testing and deployment pipelines
 
-This simplified approach allows for rapid development and testing while keeping the codebase accessible and maintainable for evaluation purposes.
+## Getting Started
 
-## Getting Started on a New Machine
+### Prerequisites
 
-Follow these steps to set up and run the pipeline on a fresh machine:
-
-### Step 1: Install uv (Python Package Manager)
-
-First, [install `uv`](https://docs.astral.sh/uv/getting-started/installation/) - a fast Python package installer and resolver.
-
-
-### Step 2: Clone the Repository
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/) - a fast Python package installer:
 
 ```bash
-git clone https://github.com/alex-kolmakov/text-sentiment-analysis.git
-cd text-sentiment-analysis
-```
-
-### Step 3: Install Python Dependencies
-
-`uv` will automatically create a virtual environment and install all required packages:
-
-```bash
-uv pip install -r requirements.txt
-```
-
-This installs primarily:
-- `kagglehub` - For downloading the Ubuntu Dialogue Corpus
-- `vaderSentiment` - Fast sentiment analysis
-- `duckdb` - Streaming large CSV files
-
-### Step 4: Download the Dataset once
-Download the Ubuntu Dialogue Corpus dataset (~799MB) before running the pipeline:
-
-```bash
-uv run download_data.py
-```
-
-This will:
-- Download the dataset from Kaggle via kagglehub
-- Cache it locally at: `~/.cache/kagglehub/datasets/rtatman/ubuntu-dialogue-corpus/`
-- Verify the dataset is ready for processing
-
-### Step 5: Run the Sentiment Analysis Pipeline
-
-```bash
-uv run sentiment_pipeline.py
-```
-
-The pipeline will:
-1. Locate the cached dataset
-2. Structure 1M+ dialogue turns into 346K conversations
-3. Analyze sentiment for each conversation using VADER
-4. Save results to `conversations.duckdb`
-
-Expected runtime: **~2 minutes** on modern hardware (processing ~3,000-15,000 conversations/second)
-
-### Step 6: Query the Results
-
-Use DuckDB to explore the results:
-
-```bash
-uv run python -c "
-import duckdb
-conn = duckdb.connect('conversations.duckdb')
-print(conn.execute('SELECT sentiment, COUNT(*) FROM conversations_with_sentiment GROUP BY sentiment').fetchdf())
-"
-```
-
-That's it! You now have a complete sentiment analysis database ready for exploration.
-
----
-
-## Quick Start (TL;DR)
-
-For experienced users, here's the minimal command sequence:
-
-```bash
-# Install uv
 curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Clone and setup
-git clone https://github.com/alex-kolmakov/text-sentiment-analysis.git
-cd text-sentiment-analysis
-uv pip install -r requirements.txt
-
-# Download dataset
-uv run download_data.py
-
-# Run pipeline
-uv run sentiment_pipeline.py
 ```
 
----
+### Setup & Installation
+
+```bash
+# Clone repository
+git clone https://github.com/alex-kolmakov/text-sentiment-and-topic-classification.git
+cd text-sentiment-and-topic-classification
+
+# Install dependencies
+uv pip install -r requirements.txt
+```
+
+**Dependencies installed:**
+- `kagglehub` - Download Ubuntu Dialogue Corpus
+- `vaderSentiment` - Fast rule-based sentiment analysis
+- `duckdb` - Streaming large CSV files efficiently
+- `bertopic` - Topic modeling with transformers
+- `sentence-transformers` - Semantic embeddings for topic alignment
+- `scikit-learn` - Machine learning utilities
+- `pandas` - Data manipulation
+
+### Run the Complete Pipeline
+
+```bash
+# Step 1: Download dataset (~799MB, cached locally)
+uv run download_data.py
+
+# Step 2: Sentiment analysis (~2 minutes)
+uv run sentiment_pipeline.py
+
+# Step 3: Topic extraction & alignment (~10 minutes)
+uv run topic_pipeline.py
+```
+
+### Query Results
+
+```bash
+# Sentiment distribution
+duckdb conversations.duckdb -c "SELECT sentiment, COUNT(*) FROM conversations_with_sentiment GROUP BY sentiment"
+
+# Topic distribution
+duckdb conversations.duckdb -c "SELECT aligned_topic, COUNT(*), ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (), 2) as pct FROM conversations_with_topics WHERE aligned_topic IS NOT NULL GROUP BY aligned_topic ORDER BY COUNT(*) DESC"
+
+# Topic mapping inspection
+duckdb conversations.duckdb -box -c "SELECT extracted_topic_id as id, LEFT(extracted_keywords, 60) as keywords, aligned_topic, ROUND(confidence, 3) as conf, num_conversations as count FROM topic_mapping_inspection ORDER BY num_conversations DESC LIMIT 15"
+```
+
 
 ## How It Works
 
-### Pipeline Steps
+### 1. Data Loading & Aggregation
 
-1. **Data Loading**: Locates the Ubuntu Dialogue Corpus CSV from kagglehub (1,038,324 individual dialogue messages)
+**Input:** Ubuntu Dialogue Corpus (1,038,324 dialogue messages)
 
-2. **Conversation Aggregation**: Uses DuckDB's `STRING_AGG` function to combine multiple messages into complete conversations
-   ```sql
-   CREATE TABLE conversations AS
-   SELECT 
-       dialogueID,
-       STRING_AGG(text, ' ') as conversation_text
-   FROM read_csv_auto('dialogueText.csv')
-   WHERE text IS NOT NULL
-   GROUP BY dialogueID
-   ```
-   
-   **How STRING_AGG Works:**
-   - Groups all messages by `dialogueID` (each conversation has a unique ID)
-   - Concatenates message texts with a **single space** (`' '`) as the separator
-   - Preserves message order within each conversation
-   - Handles NULL/empty messages gracefully
-   
-   **Example:**
-   - Message 1: `"Hello folks, please help me"`
-   - Message 2: `"Did I choose a bad channel?"`
-   - Message 3: `"the second sentence is better english"`
-   - **Result**: `"Hello folks, please help me Did I choose a bad channel? the second sentence is better english"`
+**Process:** DuckDB aggregates messages into complete conversations:
+
+```sql
+CREATE TABLE conversations AS
+SELECT 
+    dialogueID,
+    STRING_AGG(text, ' ') as conversation_text
+FROM read_csv_auto('dialogueText.csv')
+WHERE text IS NOT NULL
+GROUP BY dialogueID
+```
+
+**Output:** 346,108 complete conversations
+
+**Why conversation-level?**
+- Context matters for sentiment
+- Holistic view of technical support interactions
+- Matches output specification (one row per conversation)
+
+### 2. Sentiment Analysis (VADER)
+
+**Process:**
+- Analyzes each complete conversation (not individual messages)
+- Processes in 50,000-row batches for memory efficiency
+- VADER calculates compound score: -1 (negative) to +1 (positive)
+
+**Classification:**
+- **POSITIVE**: compound ≥ 0.05
+- **NEGATIVE**: compound ≤ -0.05
+- **NEUTRAL**: -0.05 < compound < 0.05
+
+**Runtime:** ~2 minutes (3,000-15,000 conversations/second)
+
+### 3. Topic Extraction (BERTopic)
+
+**Step 3a: Extract Topics**
+- Embeds conversations using sentence transformers (`all-MiniLM-L6-v2`)
+- Reduces dimensionality with UMAP
+- Clusters similar conversations with HDBSCAN
+- Extracts keywords using c-TF-IDF
+- Filters stop words ('the', 'to', 'get', 'it', chat terms)
+
+**Step 3b: Align to Predefined Categories**
+
+Predefined technical support categories:
+- **Hardware Issues** - Devices, drivers, peripherals, disk, graphics
+- **Software Installation** - Packages, apt-get, dependencies, compilation
+- **Network Configuration** - WiFi, DNS, firewall, router, IP addresses
+- **User Permissions** - sudo, chmod, access denied, authentication
+- **System Performance** - Slow, CPU, memory, freeze, optimization
+- **Data Recovery** - Backup, restore, lost files, corrupted filesystem
+- **Pizzas with Ketchup** ⚠️ - Outlier detection test topic
+- **Dog Walking** ⚠️ - Outlier detection test topic
+- **Climbing Mountains** ⚠️ - Outlier detection test topic
+
+**Alignment Process:**
+1. Encode extracted topic keywords using sentence transformers
+2. Encode predefined topic descriptions (rich keyword sets)
+3. Calculate cosine similarity between extracted ↔ predefined
+4. Assign best matching category if confidence > 0.19
+5. Otherwise classify as "Other/Unclassified"
 
 
-3. **Sentiment Analysis**: Processes complete conversations (not individual messages) in 50,000-row chunks using VADER
-   - Each conversation is analyzed as a single text unit
-   - VADER calculates compound score and sentiment components
-   - Sentiment classification based on compound score thresholds
+### 4. Results Storage (DuckDB)
 
-4. **Results Storage**: Saves all results directly to DuckDB database with one row per conversation
+All results saved in `conversations.duckdb`:
 
-### Sentiment Classification
+**Table: conversations** - Raw aggregated conversations (346K rows)
 
-VADER produces a compound score from -1 (most negative) to +1 (most positive):
-- **POSITIVE**: compound score ≥ 0.05
-- **NEGATIVE**: compound score ≤ -0.05
-- **NEUTRAL**: compound score between -0.05 and 0.05
+**Table: conversations_with_sentiment** - + Sentiment analysis
+- `sentiment` - POSITIVE/NEGATIVE/NEUTRAL classification
+- `compound_score` - Overall sentiment score (-1 to 1)
+- `pos`, `neg`, `neu` - Component sentiment scores
 
-### Why Conversation-Level (Not Message-Level)?
+**Table: conversations_with_topics** - + Topic extraction & alignment
+- `extracted_topic_id` - BERTopic cluster ID
+- `extracted_topic_keywords` - Raw keywords from BERTopic
+- `aligned_topic` - Predefined category assignment
+- `alignment_confidence` - Similarity score (0-1)
 
-The pipeline analyzes **complete conversations** rather than individual messages because:
-- Context matters: A negative reply might be addressing a positive question
-- Holistic sentiment: The overall tone of a conversation is more meaningful than individual messages
-- Reduces noise: Individual messages can be ambiguous without conversational context
-- Matches use case: Technical support conversations are best evaluated as complete interactions
+**Table: topic_mapping_inspection** - Evaluation table
+- Shows extracted topic → aligned category mapping
+- Confidence scores and conversation counts per topic
+- Use for evaluating alignment quality
+
+> **Note**: Tables between sentiment analysis and topic extraction intentionally separated for ability to work and evaluate them separately.
 
 ## Project Structure
 
 ```
 text-sentiment-analysis/
-├── README.md                  # This file - complete documentation
-├── requirements.txt           # Python dependencies (kagglehub, vaderSentiment, duckdb, etc.)
-├── download_data.py           # Optional: Download Ubuntu Dialogue Corpus dataset
-├── sentiment_pipeline.py      # Main pipeline: aggregates conversations & analyzes sentiment
-└── conversations.duckdb       # Output: DuckDB database with results (generated after running pipeline)
+├── README.md                      # This file
+├── ONLINE_TOPIC_MODELING.md       # Advanced topic modeling approaches
+├── requirements.txt               # Python dependencies
+├── download_data.py               # Download Ubuntu Dialogue Corpus
+├── sentiment_pipeline.py          # Sentiment analysis pipeline
+├── topic_pipeline.py              # Topic extraction & alignment
+└── conversations.duckdb           # Output database
+    ├── conversations                    # 346K aggregated conversations
+    ├── conversations_with_sentiment     # + sentiment analysis
+    ├── conversations_with_topics        # + topic extraction
+    └── topic_mapping_inspection         # Topic alignment evaluation
 ```
 
-### File Descriptions
-
-- **`download_data.py`**: Downloads the Ubuntu Dialogue Corpus from Kaggle via kagglehub and caches it locally. Run this once before the pipeline, or let the pipeline check for the dataset automatically.
-
-- **`sentiment_pipeline.py`**: Main pipeline that:
-  - Locates the cached dataset
-  - Uses DuckDB to aggregate 1M+ messages into 346K conversations with `STRING_AGG`
-  - Analyzes sentiment for each complete conversation using VADER
-  - Stores results in DuckDB database
-
-- **`conversations.duckdb`**: Generated output database containing two tables:
-  - `conversations`: Aggregated conversation texts
-  - `conversations_with_sentiment`: Final results with sentiment scores
+---
 
 ## Technologies Used
 
-- **[VADER Sentiment](https://github.com/cjhutto/vaderSentiment)**: Rule-based sentiment analysis optimized for social media text
-- **[DuckDB](https://duckdb.org/)**: In-process SQL OLAP database for streaming large datasets
-- **[kagglehub](https://github.com/Kaggle/kagglehub)**: Kaggle dataset download API
-- **[uv](https://github.com/astral-sh/uv)**: Fast Python package installer and resolver
+- **[VADER Sentiment](https://github.com/cjhutto/vaderSentiment)** - Rule-based sentiment analysis optimized for social media
+- **[BERTopic](https://maartengr.github.io/BERTopic/)** - Topic modeling with transformers
+- **[Sentence Transformers](https://www.sbert.net/)** - Semantic embeddings for text
+- **[DuckDB](https://duckdb.org/)** - In-process SQL database for streaming analytics
+- **[kagglehub](https://github.com/Kaggle/kagglehub)** - Kaggle dataset download API
+- **[uv](https://github.com/astral-sh/uv)** - Fast Python package installer
+
+---
 
 ## Dataset
 
 **Ubuntu Dialogue Corpus**
-- Source: [Kaggle](https://www.kaggle.com/datasets/rtatman/ubuntu-dialogue-corpus)
-- Size: ~799MB compressed
-- Rows: 1,038,324 dialogue turns
-- Conversations: 346,108 unique dialogues
-- Content: Technical support conversations from Ubuntu IRC channels
+- **Source**: [Kaggle - Ubuntu Dialogue Corpus](https://www.kaggle.com/datasets/rtatman/ubuntu-dialogue-corpus)
+- **Size**: ~799MB compressed
+- **Rows**: 1,038,324 dialogue turns
+- **Conversations**: 346,108 unique dialogues
+- **Content**: Technical support conversations from Ubuntu IRC channels
+- **License**: Creative Commons Attribution-ShareAlike 3.0 Unported License
+
+---
+
+## Quick Reference Commands
+
+```bash
+# Install uv
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Setup
+git clone https://github.com/alex-kolmakov/text-sentiment-and-topic-classification.git
+cd text-sentiment-and-topic-classification
+uv pip install -r requirements.txt
+
+# Run pipeline
+uv run download_data.py
+uv run sentiment_pipeline.py
+uv run topic_pipeline.py
+
+# Query results
+duckdb conversations.duckdb -c "SELECT sentiment, COUNT(*) FROM conversations_with_sentiment GROUP BY sentiment"
+duckdb conversations.duckdb -c "SELECT aligned_topic, COUNT(*) FROM conversations_with_topics WHERE aligned_topic IS NOT NULL GROUP BY aligned_topic ORDER BY COUNT(*) DESC"
+```
+
+## Notes on Online Topic Modeling
+
+For evolving topic categories without manual predefinition, see [ONLINE_TOPIC_MODELING.md](ONLINE_TOPIC_MODELING.md) which covers:
+- Pure discovery (fully automatic)
+- Semi-supervised (example-guided)
+- Hierarchical clustering
+- Incremental learning for streaming data
+- Hybrid approach (recommended for production)
+
+
+## License
+
+This project is licensed under the MIT License. The Ubuntu Dialogue Corpus dataset is licensed under Creative Commons Attribution-ShareAlike 3.0.
