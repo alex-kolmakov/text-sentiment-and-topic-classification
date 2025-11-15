@@ -7,8 +7,6 @@ Pipeline for sentiment analysis and topic extraction from the Ubuntu Dialogue Co
 - 📊 **Complete Analysis**: 346K+ conversations with sentiment scores and topic classification
 - 🔬 **Evaluation-Focused**: Designed for speed and easy evaluation rather than production deployment
 - 🏷️ **Topic Extraction**: BERTopic with semantic alignment to predefined categories
-- 🔍 **Inspection Tools**: Evaluate topic mappings before final alignment
-
 
 ## Design Philosophy
 
@@ -106,11 +104,6 @@ GROUP BY dialogueID
 
 **Output:** 346,108 complete conversations
 
-**Why conversation-level?**
-- Context matters for sentiment
-- Holistic view of technical support interactions
-- Matches output specification (one row per conversation)
-
 ### 2. Sentiment Analysis (VADER)
 
 **Process:**
@@ -119,9 +112,9 @@ GROUP BY dialogueID
 - VADER calculates compound score: -1 (negative) to +1 (positive)
 
 **Classification:**
-- **POSITIVE**: compound ≥ 0.05
-- **NEGATIVE**: compound ≤ -0.05
-- **NEUTRAL**: -0.05 < compound < 0.05
+- **POSITIVE**: score ≥ 0.05
+- **NEGATIVE**: score ≤ -0.05
+- **NEUTRAL**: -0.05 < score < 0.05
 
 **Runtime:** ~2 minutes (3,000-15,000 conversations/second)
 
@@ -177,7 +170,7 @@ All results saved in `conversations.duckdb`:
 - Confidence scores and conversation counts per topic
 - Use for evaluating alignment quality
 
-> **Note**: Tables between sentiment analysis and topic extraction intentionally separated for ability to work and evaluate them separately.
+> **Note**: Tables for sentiment analysis and topic extraction are intentionally separated for the ability to work and evaluate them separately.
 
 ## Project Structure
 
@@ -249,9 +242,4 @@ For evolving topic categories without manual predefinition, see [ONLINE_TOPIC_MO
 - Semi-supervised (example-guided)
 - Hierarchical clustering
 - Incremental learning for streaming data
-- Hybrid approach (recommended for production)
-
-
-## License
-
-This project is licensed under the MIT License. The Ubuntu Dialogue Corpus dataset is licensed under Creative Commons Attribution-ShareAlike 3.0.
+- Hybrid approach (probably best option for production)
